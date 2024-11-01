@@ -34,18 +34,12 @@ def proxied(url):
 
 # Jinja2 template for README.md
 README_TEMPLATE = """
-# Product List
-
-This README file was generated from the product data.
-
-## Products
 
 {% for product in products %}
-### {{ product.name }}
-
-![{{ product.name }}]({{ product.img }})
-
-* URL: [View Product]({{ product.url }})
+    <figure>
+        <img src="{{ product.img }}" alt="{{ product.name }}" style="width:100%">
+        <figcaption>{{ product.url }}</figcaption>
+    </figure>
 {% endfor %}
 """
 
