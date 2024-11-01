@@ -19,3 +19,7 @@
 <a href="https://www.amazon.com/dp/B075VSR5CZ" align="left">
     <img width="200" height="200" src="assets/cuero-leather-messenger-bag-B075VSR5CZ.jpg" alt=""Cuero Leather Messenger Bag"">
 </a>
+
+<a href="https://www.amazon.com/dp/B09HQ41BX9" align="left">
+    <img width="200" height="200" src="assets/corsair-k65-rgb-mini-60-mechanical-gaming-keyboard-black-renewed-B09HQ41BX9.jpg" alt=""Corsair K65 RGB Mini 60% Mechanical Gaming Keyboard, Black (Renewed)"">
+</a>
