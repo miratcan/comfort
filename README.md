@@ -1,6 +1,13 @@
-# comfort
-Physical and digital products for software developers.
 
-|       |       |
-| ----- | ----- |
-| ![image](https://github.com/user-attachments/assets/df5aa943-a4ec-4a94-80cf-0c9370451f24) | asdasd      |
+# Product List
+
+This README file was generated from the product data.
+
+## Products
+
+
+### 8BitDo Retro Arcade Fight Stick 8 Way Joystick with 2 Dedicated Macro Buttons and Turbo Function for Switch and PC Windows, Support Wireless Bluetooth, 2.4G Receiver and Wired USB-C Cable Connection
+
+![8BitDo Retro Arcade Fight Stick 8 Way Joystick with 2 Dedicated Macro Buttons and Turbo Function for Switch and PC Windows, Support Wireless Bluetooth, 2.4G Receiver and Wired USB-C Cable Connection](assets/8bitdo-retro-arcade-fight-stick-8-way-joystick-with-2-dedicated-macro-buttons-and-turbo-function-for-switch-and-pc-windows-support-wireless-bluetooth-2-4g-receiver-and-wired-usb-c-cable-connection-B0BZ3PRR5B.jpg)
+
+* URL: [View Product](https://www.amazon.com/dp/B0BZ3PRR5B)
