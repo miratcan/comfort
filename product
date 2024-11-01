@@ -40,9 +40,9 @@ def proxied(url):
 # Jinja2 template for README.md
 README_TEMPLATE = """
 {% for product in products %}
-<a href="{{ product.url }}" align="left">
-    <img width="{{ IMG_SIZE }}" height="{{ IMG_SIZE }}" src="{{ product.img }}" alt="{{ product.name }}">
-</a>
+    <a href="{{ product.url }}" align="left">
+        <img width="{{ IMG_SIZE }}" height="{{ IMG_SIZE }}" src="{{ product.img }}" alt="{{ product.name }}">
+    </a>
 {% endfor %}
 """
 
@@ -100,15 +100,18 @@ def download_and_process_image(image_url, product_name, asin):
         response = requests.get(image_url)
         response.raise_for_status()
 
+        # Open the image and resize it while maintaining the aspect ratio
         image = Image.open(requests.get(image_url, stream=True).raw)
-        min_dimension = min(image.size)
-        image = image.crop((0, 0, min_dimension, min_dimension))
-        image = image.resize((IMG_SIZE, IMG_SIZE), Image.ANTIALIAS)
+        image.thumbnail((IMG_SIZE, IMG_SIZE), Image.ANTIALIAS)  # Resize keeping aspect ratio
+
+        # Create a new square image and paste the resized image onto it
+        new_image = Image.new('RGB', (IMG_SIZE, IMG_SIZE), (255, 255, 255))  # White background
+        new_image.paste(image, ((IMG_SIZE - image.width) // 2, (IMG_SIZE - image.height) // 2))
 
         filename = f"{slugify(product_name)}-{asin}.jpg"
         image_path = os.path.join(ASSETS_FOLDER, filename)
 
-        image.save(image_path, "JPEG")
+        new_image.save(image_path, "JPEG")
         return image_path
     except Exception as e:
         logging.error(f"Failed to download and process image: {e}")
@@ -116,14 +119,23 @@ def download_and_process_image(image_url, product_name, asin):
 
 def update_source_json(product_name, image_path, clean_url):
     """Updates the source.json file with new product details."""
-    with open(SOURCE_JSON_FILE, "w+") as f:
-        try:
+    # Load existing data or initialize a new list if the file doesn't exist
+    try:
+        with open(SOURCE_JSON_FILE, "r") as f:
             data = json.load(f)
-        except json.decoder.JSONDecodeError:
-            data = []
+    except (FileNotFoundError, json.decoder.JSONDecodeError):
+        data = []
 
+    # Check if the product already exists to avoid duplicates
+    for entry in data:
+        if entry["url"] == clean_url:
+            logging.warning("Product already exists in source.json. No new entry created.")
+            return
+
+    # Add the new product to the data
     data.append({"img": image_path, "name": product_name, "url": clean_url})
 
+    # Write the updated data back to source.json
     with open(SOURCE_JSON_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
@@ -198,21 +210,21 @@ def main(operation, product_url):
             update_source_json(product_name, image_path, clean_url)
             logging.info(f"Product '{product_name}' added successfully with image '{image_path}'.")
 
+    elif operation == "build":
+        build_readme()
+        logging.info("README.md built successfully.")
+
     elif operation == "rm":
         if not product_url:
             logging.error("Error: product_url is required for the 'rm' option.")
             return
-
+        
         clean_url = clean_product_url(product_url)
         remove_product_from_json(clean_url)
 
-    elif operation == "build":
-        build_readme()
-        logging.info("README.md file built successfully from source.json.")
-
     elif operation == "clean":
         clean_unused_assets()
-        logging.info("Unused assets cleaned from the assets folder.")
+        logging.info("Unused assets cleaned successfully.")
 
 if __name__ == "__main__":
     main()
