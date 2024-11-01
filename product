@@ -10,6 +10,7 @@ from jinja2 import Environment
 import click
 from urllib.parse import urlparse, urlunparse, urlencode
 from dotenv import load_dotenv
+import ollama
 
 load_dotenv()
 
@@ -48,6 +49,17 @@ This README file was generated from the product data.
 {% endfor %}
 """
 
+def clean_product_name(product_name):
+    quest = "I'am owner of a webpage that lists spesific products from amazon.com and you're assisting me for content creation. When adding a product, we see that the name of the product is too long for our web page so I want to shorten it. Do not add any explanation to the answer and give me only one result. The name of the product is \"BitDo Retro Arcade Fight Stick 8 Way Joystick with 2 Dedicated Macro Buttons and Turbo Function for Switch and PC Windows, Support Wireless Bluetooth, 2.4G Receiver and Wired USB-C Cable Connection\""
+    response = ollama.chat(model='llama3.2', messages=[{
+        'role': 'user',
+        'content': quest
+      },
+    ])
+    return response['message']['content']
+
+
+
 def clean_product_url(product_url):
     """Cleans the Amazon product URL by removing any unnecessary parameters."""
     parsed_url = urlparse(product_url)
@@ -72,6 +84,7 @@ def fetch_product_details(product_url):
 
     soup = BeautifulSoup(response.content, 'html.parser')
     product_name = soup.find("span", {"id": "productTitle"}).get_text(strip=True)
+    product_name = clean_product_name(product_name)
     image_url = soup.find("img", {"id": "landingImage"})["src"]
 
     asin = clean_url.split("/dp/")[1] if "/dp/" in clean_url else clean_url.split("/gp/product/")[1]
