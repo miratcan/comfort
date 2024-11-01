@@ -11,53 +11,60 @@ import click
 from urllib.parse import urlparse, urlunparse, urlencode
 from dotenv import load_dotenv
 import ollama
+import logging
 
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Load environment variables
 load_dotenv()
 
 SCRAPER_API_KEY = os.getenv('SCRAPER_API_KEY')
 if not SCRAPER_API_KEY:
-    raise RuntimeError('SCRAPER_API_KEY must be defined in .env file or as environment variable.')
-
+    raise RuntimeError('SCRAPER_API_KEY must be defined in .env file or as an environment variable.')
 
 # Constants
 ASSETS_FOLDER = "assets"
 SOURCE_JSON_FILE = "source.json"
 OUTPUT_README = "README.md"
+IMG_SIZE = 200
 
 # Create assets folder if it doesn't exist
 os.makedirs(ASSETS_FOLDER, exist_ok=True)
 
-
 def proxied(url):
+    """Create a proxied URL for API requests."""
     payload = {'api_key': SCRAPER_API_KEY, 'url': url}
     return 'http://api.scraperapi.com/?' + urlencode(payload)
 
 # Jinja2 template for README.md
 README_TEMPLATE = """
-
 {% for product in products %}
-    <figure>
-        <img src="{{ product.img }}" alt="{{ product.name }}" style="width:100%">
-        <figcaption>{{ product.url }}</figcaption>
-    </figure>
+    <a href="{{ product.url }}" align="left">
+        <img width="{{ IMG_SIZE }}" height="{{ IMG_SIZE }}" src="{{ product.img }}" alt="{{ product.name }}">
+    </a>
 {% endfor %}
 """
 
 def clean_product_name(product_name):
-    quest = "I'am owner of a webpage that lists spesific products from amazon.com and you're assisting me for content creation. When adding a product, we see that the name of the product is too long for our web page so I want to shorten it. Do not add any explanation to the answer and give me only one result. The name of the product is \"BitDo Retro Arcade Fight Stick 8 Way Joystick with 2 Dedicated Macro Buttons and Turbo Function for Switch and PC Windows, Support Wireless Bluetooth, 2.4G Receiver and Wired USB-C Cable Connection\""
-    response = ollama.chat(model='llama3.2', messages=[{
-        'role': 'user',
-        'content': quest
-      },
-    ])
-    return response['message']['content']
-
-
+    """Shortens the product name using Ollama's model."""
+    quest = f"I am owner of a webpage that lists specific products from amazon.com and you're assisting me for content creation. When adding a product, we see that the name of the product is too long for our web page so I want to shorten it. Do not add any explanation to the answer and give me only one result. The name of the product is \"{product_name}\""
+    
+    try:
+        response = ollama.chat(model='llama3.2', messages=[{
+            'role': 'user',
+            'content': quest
+          },
+        ])
+        return response['message']['content']
+    except Exception as e:
+        logging.error(f"Failed to clean product name: {e}")
+        return product_name  # Fallback to original name in case of failure
 
 def clean_product_url(product_url):
     """Cleans the Amazon product URL by removing any unnecessary parameters."""
     parsed_url = urlparse(product_url)
-    
+
     if "/dp/" in parsed_url.path:
         path_parts = parsed_url.path.split("/dp/")
         clean_path = f"/dp/{path_parts[1].split('/')[0]}"
@@ -71,10 +78,13 @@ def clean_product_url(product_url):
     return clean_url
 
 def fetch_product_details(product_url):
+    """Fetches product details from Amazon based on the cleaned URL."""
     clean_url = clean_product_url(product_url)
     response = requests.get(proxied(clean_url))
-    print(response.content)
-    response.raise_for_status()
+    
+    if response.status_code != 200:
+        logging.error(f"Failed to fetch product details: {response.status_code}")
+        response.raise_for_status()
 
     soup = BeautifulSoup(response.content, 'html.parser')
     product_name = soup.find("span", {"id": "productTitle"}).get_text(strip=True)
@@ -84,22 +94,28 @@ def fetch_product_details(product_url):
     asin = clean_url.split("/dp/")[1] if "/dp/" in clean_url else clean_url.split("/gp/product/")[1]
     return product_name, image_url, asin, clean_url
 
-def download_and_process_image(image_url, product_name, asin, image_size):
-    response = requests.get(image_url)
-    response.raise_for_status()
-    
-    image = Image.open(requests.get(image_url, stream=True).raw)
-    min_dimension = min(image.size)
-    image = image.crop((0, 0, min_dimension, min_dimension))
-    image = image.resize((image_size, image_size), Image.ANTIALIAS)
+def download_and_process_image(image_url, product_name, asin):
+    """Downloads and processes the product image."""
+    try:
+        response = requests.get(image_url)
+        response.raise_for_status()
 
-    filename = f"{slugify(product_name)}-{asin}.jpg"
-    image_path = os.path.join(ASSETS_FOLDER, filename)
+        image = Image.open(requests.get(image_url, stream=True).raw)
+        min_dimension = min(image.size)
+        image = image.crop((0, 0, min_dimension, min_dimension))
+        image = image.resize((IMG_SIZE, IMG_SIZE), Image.ANTIALIAS)
 
-    image.save(image_path, "JPEG")
-    return image_path
+        filename = f"{slugify(product_name)}-{asin}.jpg"
+        image_path = os.path.join(ASSETS_FOLDER, filename)
+
+        image.save(image_path, "JPEG")
+        return image_path
+    except Exception as e:
+        logging.error(f"Failed to download and process image: {e}")
+        return None
 
 def update_source_json(product_name, image_path, clean_url):
+    """Updates the source.json file with new product details."""
     with open(SOURCE_JSON_FILE, "w+") as f:
         try:
             data = json.load(f)
@@ -119,7 +135,7 @@ def remove_product_from_json(clean_url):
     new_data = [entry for entry in data if entry["url"] != clean_url]
 
     if len(new_data) == len(data):
-        click.echo("Product URL not found in source.json.")
+        logging.warning("Product URL not found in source.json.")
         return
 
     # Remove the image associated with the product
@@ -128,23 +144,24 @@ def remove_product_from_json(clean_url):
             image_path = entry["img"]
             if os.path.exists(image_path):
                 os.remove(image_path)
-                click.echo(f"Deleted image: {image_path}")
+                logging.info(f"Deleted image: {image_path}")
             break
 
     # Write the updated data back to source.json
     with open(SOURCE_JSON_FILE, "w") as f:
         json.dump(new_data, f, indent=4)
 
-    click.echo("Product removed successfully from source.json.")
+    logging.info("Product removed successfully from source.json.")
 
 def build_readme():
+    """Builds README.md from the product data in source.json."""
     with open(SOURCE_JSON_FILE, "r") as f:
         data = json.load(f)
 
     env = Environment()
     template = env.from_string(README_TEMPLATE)
 
-    readme_content = template.render(products=data)
+    readme_content = template.render(products=data, IMG_SIZE=IMG_SIZE)
 
     with open(OUTPUT_README, "w") as f:
         f.write(readme_content)
@@ -159,7 +176,7 @@ def clean_unused_assets():
         file_path = os.path.join(ASSETS_FOLDER, filename)
         if file_path not in used_images:
             os.remove(file_path)
-            click.echo(f"Deleted unused asset: {file_path}")
+            logging.info(f"Deleted unused asset: {file_path}")
 
 @click.command()
 @click.option("--add", "operation", flag_value="add", help="Add a new product by URL.")
@@ -167,22 +184,23 @@ def clean_unused_assets():
 @click.option("--rm", "operation", flag_value="rm", help="Remove a product by URL.")
 @click.option("--clean", "operation", flag_value="clean", help="Remove unused assets from the assets folder.")
 @click.argument("product_url", required=False)
-@click.option("--image_size", default=200, help="Size of the square image (default is 200x200).")
-def main(operation, product_url, image_size):
+def main(operation, product_url):
+    """Main function for managing products."""
     if operation == "add":
         if not product_url:
-            click.echo("Error: product_url is required for the 'add' option.")
+            logging.error("Error: product_url is required for the 'add' option.")
             return
         
         product_name, image_url, asin, clean_url = fetch_product_details(product_url)
-        image_path = download_and_process_image(image_url, product_name, asin, image_size)
-        update_source_json(product_name, image_path, clean_url)
+        image_path = download_and_process_image(image_url, product_name, asin)
 
-        click.echo(f"Product '{product_name}' added successfully with image '{image_path}' at {image_size}x{image_size} size.")
+        if image_path:
+            update_source_json(product_name, image_path, clean_url)
+            logging.info(f"Product '{product_name}' added successfully with image '{image_path}'.")
 
     elif operation == "rm":
         if not product_url:
-            click.echo("Error: product_url is required for the 'rm' option.")
+            logging.error("Error: product_url is required for the 'rm' option.")
             return
 
         clean_url = clean_product_url(product_url)
@@ -190,11 +208,11 @@ def main(operation, product_url, image_size):
 
     elif operation == "build":
         build_readme()
-        click.echo("README.md file built successfully from source.json.")
+        logging.info("README.md file built successfully from source.json.")
 
     elif operation == "clean":
         clean_unused_assets()
-        click.echo("Unused assets cleaned from the assets folder.")
+        logging.info("Unused assets cleaned from the assets folder.")
 
 if __name__ == "__main__":
     main()
